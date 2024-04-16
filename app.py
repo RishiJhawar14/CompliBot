@@ -13,7 +13,7 @@ from langchain_google_genai import GoogleGenerativeAIEmbeddings
 load_dotenv()
 os.environ['HUGGINGFACEHUB_API_TOKEN'] = os.getenv("HUGGINGFACEHUB_API_TOKEN")
 
-llm = HuggingFaceEndpoint(endpoint_url="mistralai/Mixtral-8x7B-Instruct-v0.1",max_new_tokens=256,temperature=0.7,repetition_penalty=1.1)    
+llm = HuggingFaceEndpoint(endpoint_url="mistralai/Mixtral-8x7B-Instruct-v0.1",max_new_tokens=256,temperature=0.1,repetition_penalty=1.2)    
 llm2 = HuggingFaceEndpoint(endpoint_url="mistralai/Mixtral-8x7B-Instruct-v0.1",max_new_tokens=256,temperature=0.8,repetition_penalty=1.1)    
 llm3 = HuggingFaceEndpoint(endpoint_url="mistralai/Mixtral-8x7B-Instruct-v0.1",max_new_tokens=256,temperature=0.001,repetition_penalty=1)
 
