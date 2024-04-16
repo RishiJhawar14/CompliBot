@@ -1,6 +1,7 @@
 import os
 import re
 import json
+import requests
 import streamlit as st
 from PyPDF2 import PdfReader
 from dotenv import load_dotenv
@@ -12,10 +13,15 @@ from langchain_google_genai import GoogleGenerativeAIEmbeddings
 
 load_dotenv()
 os.environ['HUGGINGFACEHUB_API_TOKEN'] = os.getenv("HUGGINGFACEHUB_API_TOKEN")
+sas_key = os.getenv("EVENTHUB_SAS_TOKEN")
 
 llm = HuggingFaceEndpoint(endpoint_url="mistralai/Mixtral-8x7B-Instruct-v0.1",max_new_tokens=256,temperature=0.1,repetition_penalty=1.2)    
 llm2 = HuggingFaceEndpoint(endpoint_url="mistralai/Mixtral-8x7B-Instruct-v0.1",max_new_tokens=256,temperature=0.8,repetition_penalty=1.1)    
 llm3 = HuggingFaceEndpoint(endpoint_url="mistralai/Mixtral-8x7B-Instruct-v0.1",max_new_tokens=256,temperature=0.001,repetition_penalty=1)
+
+def send_post_request(url, headers, data):
+    response = requests.post(url, headers=headers, json=data)
+    return response
 
 def get_pdf_text(pdf_docs):
     text=""
@@ -236,7 +242,7 @@ def user_output(user_question):
 
     res = bayesian_network(privacy_response_score,sentiment_response_score,accessibility_response_score)
     
-    return res
+    return res, output
 
 def bayesian_network(privacy_score,sentiment_score,accessibility_score,user_violation_score=0):
     privacy_metric =  ""
@@ -345,7 +351,7 @@ def main():
 
     if user_question:
         v1 = user_input(user_question)
-        v2 = user_output(user_question)
+        v2, output = user_output(user_question)
         
         alert = "-1"
         if v1 == "L" and v2 == "L":
@@ -367,7 +373,31 @@ def main():
         elif v1 == "H" and v2 == "H":
             alert = "H"
         
-        st.write("Reply: ", alert)
+        if alert == "L":
+            st.write("Alert Risk: Low-", alert)
+        elif alert == "M":
+            st.write("Alert Risk: Medium-", alert)
+        elif alert == "H":
+            st.write("Alert Risk: High-", alert)
+        
+        url = 'https://kthcomplibot.servicebus.windows.net/userhub/messages'
+
+        headers = {
+            'Authorization': sas_key,
+            'Content-Type': 'application/json'
+        }
+
+        data = {
+            'question': user_question,
+            'risk': alert
+        }
+
+        response = send_post_request(url, headers, data)
+
+        if alert == "L" or alert == "M":
+            st.write("\n\n Response : \n", output)
+        else:
+            st.write("\n\n The input question is against the compliance policy.")
 
     with st.sidebar:
         st.title("Menu:")
