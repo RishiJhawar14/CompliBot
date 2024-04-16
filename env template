@@ -1,0 +1,8 @@
+# Google Gemini Embeddings API Key
+GOOGLE_API_KEY = ""
+
+# Hugging Face API Key
+HUGGINGFACEHUB_API_TOKEN = ""
+
+# Azure Event Hub Shared Acess Certificate
+EVENTHUB_SAS_TOKEN = ""
