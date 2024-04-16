@@ -1,4 +1,5 @@
 import os
+import re
 import json
 import streamlit as st
 from PyPDF2 import PdfReader
@@ -11,7 +12,10 @@ from langchain_google_genai import GoogleGenerativeAIEmbeddings
 
 load_dotenv()
 os.environ['HUGGINGFACEHUB_API_TOKEN'] = os.getenv("HUGGINGFACEHUB_API_TOKEN")
-llm = HuggingFaceEndpoint(endpoint_url="mistralai/Mixtral-8x7B-Instruct-v0.1",max_new_tokens=256,temperature=0.01,repetition_penalty=1.1)
+
+llm = HuggingFaceEndpoint(endpoint_url="mistralai/Mixtral-8x7B-Instruct-v0.1",max_new_tokens=256,temperature=0.7,repetition_penalty=1.1)    
+llm2 = HuggingFaceEndpoint(endpoint_url="mistralai/Mixtral-8x7B-Instruct-v0.1",max_new_tokens=256,temperature=0.8,repetition_penalty=1.1)    
+llm3 = HuggingFaceEndpoint(endpoint_url="mistralai/Mixtral-8x7B-Instruct-v0.1",max_new_tokens=256,temperature=0.001,repetition_penalty=1)
 
 def get_pdf_text(pdf_docs):
     text=""
@@ -38,7 +42,8 @@ def get_accessibility_conversational_chain():
     You are an expert policy regulator that analyze the context deeply and provide violation score on the question. 
     You infer the question in great detail and provide a score between 0 (no violoation) to 100 (high violation) 
     on whether the question violates the terms in the context directly and indirectly. 
-    You will only respond with a JSON object with the key Confidence and Explanation. Do not provide explicit explanations.
+    You will only respond with a valid JSON object that has the key Confidence.
+    Do not provide explicit explanations.
     
     \n\n
 
@@ -51,14 +56,36 @@ def get_accessibility_conversational_chain():
 
     return accessibility_llm_chain
 
+def get_output_accessibility_conversational_chain():
+    
+    accessibility_prompt_template = """
+
+    You are an expert policy regulator that analyze the context deeply and provide violation score on the content. 
+    You infer the content  and the context in great detail and provide a score between 0 (no violoation) to 100 (high violation) 
+    on whether the content violates the context directly and indirectly. 
+    You will only respond with a valid JSON object that has the key Confidence. 
+    Do not provide explicit explanations.
+    
+    \n\n
+
+    Context: \n {context} \n
+    Content: \n {text} \n   
+
+    Answer:"""
+    accessibility_prompt = PromptTemplate(template=accessibility_prompt_template, input_variables=["text", "context"])
+    accessibility_llm_chain = LLMChain(prompt=accessibility_prompt,llm=llm2)
+
+    return accessibility_llm_chain
+
 def get_privacy_conversational_chain():
     
     privacy_prompt_template = """
 
     You are an expert privacy violation detection agent that provide violation score on the question. 
     You infer the question in great detail and provide a score between 0 (no violoation) to 100 (high violation) 
-    on whether the question violates the any privacy in the contxt directly or indirectly with respect to the context. 
-    You will only respond with a JSON object with the key Confidence and Explanation. Do not provide explicit explanations.
+    on whether the question violates the privacy in the context directly or indirectly. 
+    You will only respond with a valid JSON object that has the key Confidence. 
+    Do not provide explicit explanations.
     
     \n\n
 
@@ -72,13 +99,35 @@ def get_privacy_conversational_chain():
 
     return privacy_llm_chain
 
+def get_output_privacy_conversational_chain():
+    
+    privacy_prompt_template = """
+
+    You are an expert privacy violation detection agent that provide violation score on the content. 
+    You infer the content and the context in great detail and provide a score between 0 (no violoation) to 100 (high violation) 
+    on whether the content violates the privacy in the context directly or indirectly. 
+    You will only respond with a valid JSON object that has the key Confidence. 
+    Do not provide explicit explanations.
+    
+    \n\n
+
+    Context: \n {context} \n
+    Content: \n {text} \n
+
+    Answer:"""
+    
+    privacy_prompt = PromptTemplate(template=privacy_prompt_template, input_variables=["question", "context"])
+    privacy_llm_chain = LLMChain(prompt=privacy_prompt,llm=llm2)
+
+    return privacy_llm_chain
+
 def get_sentiment_conversational_chain():
     
     sentiment_prompt_template = """
 
     You are an expert connection finder (direct or indirect) between the question and context and provide a correlation score. 
     You infer and analyze the question and the context in great depth and provide a score between 0 (no violation) to 100 (high violation).
-    You will only respond with a JSON object with the key Confidence and Explantion.
+    You will only respond with a valid JSON object that has the key Confidence.
     Do not provide explicit explanations.
     
     \n\n
@@ -90,6 +139,27 @@ def get_sentiment_conversational_chain():
     
     sentiment_prompt = PromptTemplate(template=sentiment_prompt_template, input_variables=["question", "context"])
     sentiment_llm_chain = LLMChain(prompt=sentiment_prompt,llm=llm)
+
+    return sentiment_llm_chain
+
+def get_output_sentiment_conversational_chain():
+    
+    sentiment_prompt_template = """
+
+    You are an expert connection finder (direct or indirect) between the content and context and provide a correlation score. 
+    You infer and analyze the content and the context in great depth and provide a score between 0 (no violation) to 100 (high violation).
+    You will only respond with a JSON object with the key Confidence.
+    Do not provide explicit explanations.
+    
+    \n\n
+
+    Context: \n {context} \n
+    Content: \n {text} \n
+
+    Answer:"""
+    
+    sentiment_prompt = PromptTemplate(template=sentiment_prompt_template, input_variables=["text", "context"])
+    sentiment_llm_chain = LLMChain(prompt=sentiment_prompt,llm=llm2)
 
     return sentiment_llm_chain
 
@@ -113,26 +183,60 @@ def user_input(user_question):
         {"context":docs, "question": user_question}
         , return_only_outputs=True)
     
-    accessibility_response_score = int(json.loads(accessibility_response["text"])["Confidence"])    
-    accessibility_response_explanation = ""
-    if json.loads(accessibility_response["text"])["Explanation"]:
-        accessibility_response_explanation = json.loads(accessibility_response["text"])["Explanation"]
+    # accessibility_response_score = int(json.loads(accessibility_response["text"])["Confidence"])    
+    accessibility_response_score = int(re.findall(r'\d+', accessibility_response["text"])[0])
         
-    privacy_response_score = int(json.loads(privacy_response["text"])["Confidence"])
-    privacy_response_explanation = ""
-    if json.loads(privacy_response["text"])["Explanation"]:
-        privacy_response_explanation = json.loads(privacy_response["text"])["Explanation"]
+    # privacy_response_score = int(json.loads(privacy_response["text"])["Confidence"])
+    privacy_response_score = int(re.findall(r'\d+', privacy_response["text"])[0])
     
-    sentiment_response_score = int(json.loads(sentiment_response["text"])["Confidence"])
-    sentiment_response_explanation = ""
-    if json.loads(sentiment_response["text"])["Explanation"]:
-        sentiment_response_explanation = json.loads(sentiment_response["text"])["Explanation"]
+    # sentiment_response_score = int(json.loads(sentiment_response["text"])["Confidence"])
+    sentiment_response_score = int(re.findall(r'\d+', sentiment_response["text"])[0])
 
     response = f'({accessibility_response_score}, {privacy_response_score}, {sentiment_response_score})'
+    print(response)
+
+    res = bayesian_network(privacy_response_score,sentiment_response_score,accessibility_response_score)
+
+    return res
+
+def user_output(user_question):
+    embeddings = GoogleGenerativeAIEmbeddings(model = "models/embedding-001")
+    
+    new_db = FAISS.load_local("faiss_index", embeddings, allow_dangerous_deserialization=True)
+    docs = new_db.similarity_search(user_question)
+
+    accessibility_chain = get_output_accessibility_conversational_chain()
+    privacy_chain = get_output_privacy_conversational_chain()
+    sentiment_chain = get_output_sentiment_conversational_chain()
+
+    output = llm3.invoke(user_question)
+    print(output)
+
+    accessibility_response = accessibility_chain.invoke(
+        {"context":docs, "text": output}
+        , return_only_outputs=True)
+    privacy_response = privacy_chain.invoke(
+        {"context":docs, "text": output}
+        , return_only_outputs=True)
+    sentiment_response = sentiment_chain.invoke(
+        {"context":docs, "text": output}
+        , return_only_outputs=True)
+
+    # accessibility_response_score = int(json.loads(accessibility_response["text"])["Confidence"])    
+    accessibility_response_score = int(re.findall(r'\d+', accessibility_response["text"])[0])
+        
+    # privacy_response_score = int(json.loads(privacy_response["text"])["Confidence"])
+    privacy_response_score = int(re.findall(r'\d+', privacy_response["text"])[0])
+    
+    # sentiment_response_score = int(json.loads(sentiment_response["text"])["Confidence"])
+    sentiment_response_score = int(re.findall(r'\d+', sentiment_response["text"])[0])
+
+    response = f'({accessibility_response_score}, {privacy_response_score}, {sentiment_response_score})'
+    print(response)
 
     res = bayesian_network(privacy_response_score,sentiment_response_score,accessibility_response_score)
     
-    st.write("Reply: ", res)
+    return res
 
 def bayesian_network(privacy_score,sentiment_score,accessibility_score,user_violation_score=0):
     privacy_metric =  ""
@@ -222,6 +326,8 @@ def bayesian_network(privacy_score,sentiment_score,accessibility_score,user_viol
         alert_risk = "M"
     elif m_count == 2 and l_count == 1:
         alert_risk = "M"
+    elif m_count == 3:
+        alert_risk = "H"
     elif m_count == 2 and h_count == 1:
         alert_risk = "H"
     elif h_count >= 2:
@@ -238,7 +344,30 @@ def main():
     user_question = st.text_input("Ask a Question")
 
     if user_question:
-        user_input(user_question)
+        v1 = user_input(user_question)
+        v2 = user_output(user_question)
+        
+        alert = "-1"
+        if v1 == "L" and v2 == "L":
+            alert = "L"
+        elif v1 == "L" and v2 == "M":
+            alert = "M"
+        elif v1 == "L" and v2 == "H":
+            alert = "H"
+        elif v1 == "M" and v2 == "L":
+            alert = "M"
+        elif v1 == "M" and v2 == "M":
+            alert = "H"
+        elif v1 == "M" and v2 == "H":
+            alert = "H"
+        elif v1 == "H" and v2 == "L":
+            alert = "M"
+        elif v1 == "H" and v2 == "M":
+            alert = "H"
+        elif v1 == "H" and v2 == "H":
+            alert = "H"
+        
+        st.write("Reply: ", alert)
 
     with st.sidebar:
         st.title("Menu:")
@@ -249,7 +378,6 @@ def main():
                 text_chunks = get_text_chunks(raw_text)
                 get_vector_store(text_chunks)
                 st.success("Done")
-
 
 if __name__ == "__main__":
     main()
